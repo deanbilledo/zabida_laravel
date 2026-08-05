@@ -181,7 +181,7 @@
   </div>
 
   <div id="blog-grid" class="divide-y divide-ink/10">
-    @forelse ($posts as $post)
+    @forelse ($posts->take(3) as $post)
       <article class="grid grid-cols-1 sm:grid-cols-[80px_1fr_120px] md:grid-cols-[100px_1fr_160px] gap-4 sm:gap-6 items-start py-8">
         <p class="font-mono text-sm text-ink/40">{{ $post->published_at->format('M Y') }}</p>
         <div>

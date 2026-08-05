@@ -72,17 +72,16 @@
 <section class="max-w-6xl mx-auto px-6 pb-20 md:pb-28">
   <p class="font-mono text-xs uppercase tracking-[0.2em] text-ink/50 mb-4">Watch</p>
   <h2 class="font-serif text-3xl md:text-4xl mb-8">See the alliance at work</h2>
-  <div class="relative aspect-video w-full bg-ink/5 border border-ink/10 rounded-lg overflow-hidden flex items-center justify-center">
-    {{-- Replace this block with an <iframe> (YouTube/Facebook embed) or a
-         <video> tag once a feature video is ready to publish. Left as a
-         clearly-labeled placeholder rather than a broken/empty box. --}}
-    <div class="text-center px-6">
-      <div class="w-14 h-14 mx-auto mb-4 rounded-full bg-ink text-paper flex items-center justify-center" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-      </div>
-      <p class="font-mono text-xs uppercase tracking-wide text-ink/50">Video coming soon</p>
-      <p class="text-ink/60 text-sm mt-1">In the meantime, watch us on <a href="https://www.youtube.com/zabidaorg" target="_blank" rel="noopener noreferrer" class="underline hover:text-clay">YouTube</a>.</p>
-    </div>
+  <div class="relative aspect-video w-full bg-ink/5 border border-ink/10 rounded-lg overflow-hidden">
+    <iframe 
+      class="absolute top-0 left-0 w-full h-full" 
+      src="https://www.youtube.com/embed/wIOzG5jl8Es?start=1" 
+      title="Community Empowerment for Human Security: What is ZABIDA" 
+      frameborder="0" 
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+      referrerpolicy="strict-origin-when-cross-origin" 
+      allowfullscreen>
+    </iframe>
   </div>
 </section>
 

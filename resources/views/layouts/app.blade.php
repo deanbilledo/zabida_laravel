@@ -8,7 +8,7 @@
 <meta name="description" content="{{ $pageDescription ?? 'ZABIDA is a consortium of local NGOs working for peace and development across the Zamboanga Peninsula and Basilan.' }}">
 <meta name="theme-color" content="#17303D">
 <link rel="icon" href="{{ asset('assets/images/zabida_logo.png') }}" type="image/png">
-
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Work+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}?v={{ @filemtime(public_path('assets/css/style.css')) ?: '1' }}">

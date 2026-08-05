@@ -1,6 +1,3 @@
-@csrf
-@if (isset($post)) @method('PUT') @endif
-
 <div class="mb-6">
   <label for="title" class="block text-sm font-medium mb-2">Title</label>
   <input type="text" name="title" id="title" required value="{{ old('title', $post->title ?? '') }}"
@@ -46,17 +43,10 @@
               <span class="absolute bottom-1 left-1 bg-gold text-ink text-[10px] px-1.5 py-0.5 rounded font-mono uppercase">Cover</span>
             @endif
           @endif
-          {{-- data-confirm here too: no native browser confirm() anywhere
-               in the admin. --}}
-          <form method="POST" action="{{ route('admin.posts.media.destroy', [$post, $media]) }}"
-            class="absolute -top-2 -right-2"
-            data-confirm="Remove this file from the post?"
-            data-confirm-danger="true">
-            @csrf
-            @method('DELETE')
-            <button type="submit" aria-label="Remove this file"
-              class="w-6 h-6 flex items-center justify-center rounded-full bg-ink text-paper text-xs hover:bg-clay transition-colors">&times;</button>
-          </form>
+          
+          {{-- The form tag is gone. We use form="delete-media-ID" to link it to the hidden forms outside --}}
+          <button type="submit" form="delete-media-{{ $loop->index }}" aria-label="Remove this file"
+            class="absolute -top-2 -right-2 w-6 h-6 flex items-center justify-center rounded-full bg-ink text-paper text-xs hover:bg-clay transition-colors">&times;</button>
         </div>
       @endforeach
     </div>

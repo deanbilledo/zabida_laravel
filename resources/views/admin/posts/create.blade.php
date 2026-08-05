@@ -13,6 +13,10 @@
   data-async-upload
   data-loading-label="Publishing post&hellip;"
   data-fallback-redirect="{{ route('admin.posts.index') }}">
+  
+  {{-- ADD THIS LINE: This was missing, causing the 419 error! --}}
+  @csrf
+
   @include('admin.posts._form')
 
   <button type="submit" class="bg-ink text-paper px-6 py-3 text-sm uppercase tracking-wide hover:bg-clay transition-colors">

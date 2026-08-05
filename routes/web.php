@@ -28,7 +28,6 @@ Route::post('/contact', [ContactController::class, 'submit'])
 
 Route::get('/journal/{post}', [PostController::class, 'show'])->name('posts.show');
 
-// PeaceWorks and Knowledge Products — the public PDF archive
 Route::get('/peaceworks-knowledge-products', [PublicationController::class, 'index'])
     ->name('publications.index');
 Route::get('/peaceworks-knowledge-products/{publication}/view', [PublicationController::class, 'view'])
@@ -57,12 +56,22 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::middleware(['auth'])->group(function () {
         Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
-        Route::resource('posts', AdminPostController::class)->except(['show']);
+        // 'update' pulled out of the resource below and registered to accept
+        // BOTH put and post directly — removes any dependency on _method
+        // spoofing being recognized correctly for an XHR-submitted
+        // multipart/form-data upload, which is what the async post/publication
+        // forms use (see assets/js/ui.js). Keep @method('PUT') in the Blade
+        // forms regardless — it still works when it's a genuine PUT and is
+        // harmless when the route also accepts POST directly.
+        Route::resource('posts', AdminPostController::class)->except(['show', 'update']);
+        Route::match(['put', 'post'], 'posts/{post}', [AdminPostController::class, 'update'])
+            ->name('posts.update');
         Route::delete('posts/{post}/media/{media}', [AdminPostController::class, 'destroyMedia'])
             ->name('posts.media.destroy');
 
-        // Clean, standard resource route handles all standard actions (including update)
-        Route::resource('publications', AdminPublicationController::class)->except(['show']);
+        Route::resource('publications', AdminPublicationController::class)->except(['show', 'update']);
+        Route::match(['put', 'post'], 'publications/{publication}', [AdminPublicationController::class, 'update'])
+            ->name('publications.update');
 
         Route::get('facebook-sync', [FacebookSyncController::class, 'index'])->name('facebook.index');
         Route::post('facebook-sync', [FacebookSyncController::class, 'sync'])->name('facebook.sync');

@@ -16,9 +16,6 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Public site
 |--------------------------------------------------------------------------
-| Laravel routes never expose index.php or a .php extension in the URL —
-| that is automatic (public/.htaccess rewrites everything through
-| public/index.php invisibly). Nothing extra needed here.
 */
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
@@ -53,8 +50,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->name('login.attempt');
     });
 
-    // Original sign-out was a plain link — no CSRF-protected POST, no
-    // session invalidation. Fixed here as a real POST route.
     Route::post('logout', [AdminLoginController::class, 'logout'])
         ->middleware('auth')
         ->name('logout');
@@ -66,6 +61,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::delete('posts/{post}/media/{media}', [AdminPostController::class, 'destroyMedia'])
             ->name('posts.media.destroy');
 
+        // Clean, standard resource route handles all standard actions (including update)
         Route::resource('publications', AdminPublicationController::class)->except(['show']);
 
         Route::get('facebook-sync', [FacebookSyncController::class, 'index'])->name('facebook.index');

@@ -28,9 +28,18 @@
       </div>
       <div>
         <h3 class="font-mono text-xs uppercase tracking-wide text-paper/50 mb-4">Resources</h3>
-        <ul class="space-y-2 text-sm text-paper/70">
-          <li><a href="{{ route('publications.index') }}" class="hover:text-gold">PeaceWorks &amp; Knowledge Products</a></li>
-          <li><a href="{{ route('admin.login') }}" class="hover:text-gold">Admin login</a></li>
+       <ul class="space-y-2 text-sm text-paper/70">
+            <li><a href="{{ route('publications.index') }}" class="hover:text-gold">PeaceWorks &amp; Knowledge Products</a></li>
+            
+            @guest
+                {{-- Visible only to users who are NOT logged in --}}
+                <li><a href="{{ route('admin.login') }}" class="hover:text-gold">Admin login</a></li>
+            @endguest
+
+            @auth
+                {{-- Visible only to logged-in users --}}
+                <li><a href="{{ route('admin.dashboard') }}" class="hover:text-gold">Admin Dashboard</a></li>
+            @endauth
         </ul>
       </div>
       <div>

@@ -49,7 +49,7 @@ class FacebookGraphService
             'attachments{type,media_type,media{image{src},source},target,subattachments{type,media_type,media{image{src},source},target}}',
         ]);
 
-        $response = Http::get("{$this->baseUrl}/me/posts", [
+        $response = Http::timeout(30)->retry(2, 500)->get("{$this->baseUrl}/me/posts", [
             'fields' => $postFields,
             'limit' => $limit,
             'access_token' => $this->userToken,
@@ -81,102 +81,105 @@ class FacebookGraphService
 
         if ($limit === null) {
             $hasExistingPosts = Post::where('source', 'facebook')->exists();
-            $limit = $hasExistingPosts ? 5 : 10;
+            $limit = $hasExistingPosts ? 5 : 100;
         }
 
         $created = 0;
         $posts = $this->fetchRecentPosts($limit);
 
-         foreach ($posts as $fbPost) {
-        if (empty($fbPost['id'])) {
-            continue;
-        }
-
-        $fbPostId = $fbPost['id'];
-
-        if (Post::where('facebook_post_id', $fbPostId)->exists()) {
-            continue;
-        }
-
-        $message = trim($fbPost['message'] ?? '');
-        $attachments = $fbPost['attachments']['data'] ?? [];
-        $fullPicture = $fbPost['full_picture'] ?? null;
-
-        if ($message === '' && empty($attachments) && empty($fullPicture)) {
-            continue;
-        }
-
-        $title = Str::limit(Str::of($message)->explode("\n")->first() ?: 'Facebook update', 80);
-        $excerpt = Str::limit($message, 240);
-
-        $post = Post::create([
-            'title' => $title ?: 'Facebook update',
-            'excerpt' => $excerpt,
-            'body' => $message,
-            'source' => 'facebook',
-            'facebook_post_id' => $fbPostId,
-            'facebook_permalink' => $fbPost['permalink_url'] ?? null,
-            'published_at' => isset($fbPost['created_time'])
-                ? date('Y-m-d H:i:s', strtotime($fbPost['created_time']))
-                : now(),
-        ]);
-
-        $importedCount = 0;
-        if (! empty($attachments)) {
-            $importedCount = $this->importAttachments($post, $attachments);
-        }
-
-        if ($importedCount === 0 && ! empty($fullPicture)) {
-            $this->importSharedPicture($post, $fullPicture);
-            $importedCount = 1;
-        }
-
-        // NEW: last-resort fallback — query this specific post directly
-        // for full_picture/picture. Covers native_templates / share types
-        // where the batched /me/posts response omits image data entirely.
-        if ($importedCount === 0) {
-            $resolvedUrl = $this->resolvePostPicture($fbPostId);
-            if ($resolvedUrl) {
-                $this->importSharedPicture($post, $resolvedUrl);
-                $importedCount = 1;
-            } else {
-                Log::info('ZABIDA Facebook sync: no image found for post', [
-                    'facebook_post_id' => $fbPostId,
-                ]);
+        foreach ($posts as $fbPost) {
+            if (empty($fbPost['id'])) {
+                continue;
             }
+
+            $fbPostId = $fbPost['id'];
+
+            if (Post::where('facebook_post_id', $fbPostId)->exists()) {
+                continue;
+            }
+
+            $message = trim($fbPost['message'] ?? '');
+            $attachments = $fbPost['attachments']['data'] ?? [];
+            $fullPicture = $fbPost['full_picture'] ?? null;
+
+            if ($message === '' && empty($attachments) && empty($fullPicture)) {
+                continue;
+            }
+
+            $title = Str::limit(Str::of($message)->explode("\n")->first() ?: 'Facebook update', 80);
+            $excerpt = Str::limit($message, 240);
+
+            $post = Post::create([
+                'title' => $title ?: 'Facebook update',
+                'excerpt' => $excerpt,
+                'body' => $message,
+                'source' => 'facebook',
+                'facebook_post_id' => $fbPostId,
+                'facebook_permalink' => $fbPost['permalink_url'] ?? null,
+                'published_at' => isset($fbPost['created_time'])
+                    ? date('Y-m-d H:i:s', strtotime($fbPost['created_time']))
+                    : now(),
+            ]);
+
+            $importedCount = 0;
+            if (! empty($attachments)) {
+                $importedCount = $this->importAttachments($post, $attachments);
+            }
+
+            if ($importedCount === 0 && ! empty($fullPicture)) {
+                $this->importSharedPicture($post, $fullPicture);
+                $importedCount = 1;
+            }
+
+            // Last-resort fallback — query this specific post directly for
+            // full_picture/picture. Covers native_templates / share types
+            // where the batched /me/posts response omits image data entirely.
+            // If this also comes back empty, the post has no resolvable
+            // image (often because it's actually a video share) — the
+            // Blade view shows a "watch on Facebook" prompt in that case.
+            if ($importedCount === 0) {
+                $resolvedUrl = $this->resolvePostPicture($fbPostId);
+                if ($resolvedUrl) {
+                    $this->importSharedPicture($post, $resolvedUrl);
+                    $importedCount = 1;
+                } else {
+                    Log::info('ZABIDA Facebook sync: no image found for post', [
+                        'facebook_post_id' => $fbPostId,
+                    ]);
+                }
+            }
+
+            $created++;
         }
 
-        $created++;
+        return $created;
     }
 
-    return $created;
-    }
+    protected function resolvePostPicture(string $postId): ?string
+    {
+        try {
+            $response = Http::get("{$this->baseUrl}/{$postId}", [
+                'fields' => 'full_picture,picture',
+                'access_token' => $this->userToken,
+            ]);
 
-protected function resolvePostPicture(string $postId): ?string
-{
-    try {
-        $response = Http::get("{$this->baseUrl}/{$postId}", [
-            'fields' => 'full_picture,picture',
-            'access_token' => $this->userToken,
-        ]);
+            if ($response->failed()) {
+                Log::warning('ZABIDA Facebook sync: direct post picture lookup failed', [
+                    'post_id' => $postId,
+                    'status' => $response->status(),
+                ]);
+                return null;
+            }
 
-        if ($response->failed()) {
-            Log::warning('ZABIDA Facebook sync: direct post picture lookup failed', [
+            return $response->json('full_picture') ?? $response->json('picture');
+        } catch (\Throwable $e) {
+            Log::warning('ZABIDA Facebook sync: direct post picture lookup exception', [
                 'post_id' => $postId,
-                'status' => $response->status(),
+                'error' => $e->getMessage(),
             ]);
             return null;
         }
-
-        return $response->json('full_picture') ?? $response->json('picture');
-    } catch (\Throwable $e) {
-        Log::warning('ZABIDA Facebook sync: direct post picture lookup exception', [
-            'post_id' => $postId,
-            'error' => $e->getMessage(),
-        ]);
-        return null;
     }
-}
 
     /**
      * Parse attachments and subattachments. Returns count of imported images.
@@ -187,24 +190,32 @@ protected function resolvePostPicture(string $postId): ?string
         $coverSet = false;
 
         foreach ($attachments as $attachment) {
-            // Check main attachment
+            $mediaType = $attachment['media_type'] ?? $attachment['type'] ?? null;
+            $type = $attachment['type'] ?? null;
+
+            // Confirmed video attachment — Graph API explicitly labels this
+            // as video, so we can trust it and set video_url directly.
+            if (in_array($mediaType, ['video_inline', 'video_autoplay', 'video_share'], true)) {
+                $post->video_url = $post->facebook_permalink;
+                $post->save();
+                continue;
+            }
+
+            // native_templates with no target/media at all — Graph API gives
+            // us nothing to reliably tell video from photo/link shares here.
+            // We leave this post with no image/video; the Blade view shows
+            // a "watch on Facebook" prompt for any Facebook post with no
+            // resolvable media, which correctly covers this case too.
+            if ($type === 'native_templates' && empty($attachment['target']) && empty($attachment['media'])) {
+                continue;
+            }
+
             $newPosition = $this->importOnePhoto($post, $attachment, $position, $coverSet);
             if ($newPosition > $position) {
                 $position = $newPosition;
                 $coverSet = true;
             }
 
-            // Check videos
-            $mediaType = $attachment['media_type'] ?? $attachment['type'] ?? null;
-            if (in_array($mediaType, ['video_inline', 'video_autoplay', 'video_share'], true)) {
-                $source = $attachment['media']['source'] ?? null;
-                if ($source) {
-                    $post->video_url = $source;
-                    $post->save();
-                }
-            }
-
-            // Check subattachments (gallery images in a shared post)
             if (! empty($attachment['subattachments']['data'])) {
                 foreach ($attachment['subattachments']['data'] as $sub) {
                     $newPosition = $this->importOnePhoto($post, $sub, $position, $coverSet);
@@ -219,76 +230,80 @@ protected function resolvePostPicture(string $postId): ?string
         return $position;
     }
 
-protected function importOnePhoto(Post $post, array $attachment, int $position, bool $coverAlreadySet): int
-{
-    $imageUrl = $attachment['media']['image']['src']
-        ?? $attachment['media']['src']
-        ?? null;
+    protected function importOnePhoto(Post $post, array $attachment, int $position, bool $coverAlreadySet): int
+    {
+        $mediaType = $attachment['media_type'] ?? $attachment['type'] ?? null;
+        if (in_array($mediaType, ['video_inline', 'video_autoplay', 'video_share'], true)) {
+            return $position; // video frame, not a real photo — handled separately
+        }
 
-    // NEW: handle shared/repost attachments (native_templates, share, etc.)
-    // These don't carry image data directly — only a target id pointing
-    // to the original post/page/photo, which we have to resolve separately.
-    if (! $imageUrl && ! empty($attachment['target']['id'])) {
-        $imageUrl = $this->resolveSharedImage($attachment['target']['id']);
-    }
+        $imageUrl = $attachment['media']['image']['src']
+            ?? $attachment['media']['src']
+            ?? null;
 
-    if (! $imageUrl) {
-        return $position;
-    }
+        // Shared/repost attachments (photo type with a target id but no
+        // direct media) — resolve the original photo via its target id.
+        if (! $imageUrl && ! empty($attachment['target']['id'])) {
+            $imageUrl = $this->resolveSharedImage($attachment['target']['id']);
+        }
 
-    $mediaId = $attachment['target']['id'] ?? null;
-    if ($mediaId && PostImage::where('post_id', $post->id)->where('facebook_media_id', $mediaId)->exists()) {
-        return $position;
-    }
+        if (! $imageUrl) {
+            return $position;
+        }
 
-    $localPath = $this->downloadImage($imageUrl, $post->id, $position);
-    if (! $localPath) {
-        return $position;
-    }
+        $mediaId = $attachment['target']['id'] ?? null;
+        if ($mediaId && PostImage::where('post_id', $post->id)->where('facebook_media_id', $mediaId)->exists()) {
+            return $position;
+        }
 
-    PostImage::create([
-        'post_id' => $post->id,
-        'path' => $localPath,
-        'facebook_media_id' => $mediaId,
-        'position' => $position,
-    ]);
+        $localPath = $this->downloadImage($imageUrl, $post->id, $position);
+        if (! $localPath) {
+            return $position;
+        }
 
-    if (! $coverAlreadySet) {
-        $post::where('id', $post->id)->update(['image' => $localPath]);
-    }
-
-    return $position + 1;
-}
-
-/**
- * For shared posts, the attachment only gives us a target id (the original
- * post/page/photo being shared). Query that object directly for its picture.
- */
-protected function resolveSharedImage(string $targetId): ?string
-{
-    try {
-        $response = Http::get("{$this->baseUrl}/{$targetId}", [
-            'fields' => 'full_picture',
-            'access_token' => $this->userToken,
+        PostImage::create([
+            'post_id' => $post->id,
+            'path' => $localPath,
+            'facebook_media_id' => $mediaId,
+            'position' => $position,
         ]);
 
-        if ($response->failed()) {
-            Log::warning('ZABIDA Facebook sync: failed to resolve shared image', [
+        if (! $coverAlreadySet) {
+            $post::where('id', $post->id)->update(['image' => $localPath]);
+        }
+
+        return $position + 1;
+    }
+
+    /**
+     * For shared posts, the attachment only gives us a target id (the original
+     * post/page/photo being shared). Query that object directly for its picture.
+     */
+    protected function resolveSharedImage(string $targetId): ?string
+    {
+        try {
+            $response = Http::get("{$this->baseUrl}/{$targetId}", [
+                'fields' => 'full_picture',
+                'access_token' => $this->userToken,
+            ]);
+
+            if ($response->failed()) {
+                Log::warning('ZABIDA Facebook sync: failed to resolve shared image', [
+                    'target_id' => $targetId,
+                    'status' => $response->status(),
+                ]);
+                return null;
+            }
+
+            return $response->json('full_picture');
+        } catch (\Throwable $e) {
+            Log::warning('ZABIDA Facebook sync: shared image lookup exception', [
                 'target_id' => $targetId,
-                'status' => $response->status(),
+                'error' => $e->getMessage(),
             ]);
             return null;
         }
-
-        return $response->json('full_picture');
-    } catch (\Throwable $e) {
-        Log::warning('ZABIDA Facebook sync: shared image lookup exception', [
-            'target_id' => $targetId,
-            'error' => $e->getMessage(),
-        ]);
-        return null;
     }
-}
 
     /**
      * Fallback for shared posts or links that have a preview image.

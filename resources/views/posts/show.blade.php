@@ -47,14 +47,21 @@
     <img src="{{ $post->coverImageUrl() }}" alt="" class="w-full rounded-lg border border-ink/10 mb-10">
   @endif
 
-  {{-- Video, when the synced post carried one. --}}
-  @if ($post->video_url)
-    <div class="mb-10">
-      <video controls preload="metadata" class="w-full rounded-lg border border-ink/10 bg-ink" poster="{{ $post->coverImageUrl() }}">
-        <source src="{{ $post->video_url }}" type="video/mp4">
-        Your browser doesn't support embedded video. <a href="{{ $post->video_url }}" class="underline">Watch it directly</a>.
-      </video>
-    </div>
+  {{-- Video, when the synced post carried a confirmed video attachment, or
+       when it's an unresolved Facebook share with no image/video data at
+       all (often a share the Graph API can't fully resolve — frequently a
+       video). Rather than embed Facebook's video player, which proved
+       unreliable across environments, we link out to the original post. --}}
+  @if ($post->video_url || ($post->images->isEmpty() && ! $post->image && $post->source === 'facebook' && $post->facebook_permalink))
+    <a href="{{ $post->facebook_permalink }}" target="_blank" rel="noopener noreferrer" class="mb-10 flex items-center gap-4 rounded-lg border border-ink/10 bg-gray-50 p-6 hover:bg-gray-100 transition-colors">
+      <span class="flex-shrink-0 w-12 h-12 rounded-full bg-ink flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 ml-0.5 text-paper" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      </span>
+      <span>
+        <span class="block font-serif text-lg text-ink">This post includes a video</span>
+        <span class="block text-sm text-ink/60">Visit the original Facebook post to watch it &rarr;</span>
+      </span>
+    </a>
   @endif
 
   <div class="prose prose-lg max-w-none text-ink/80 leading-relaxed whitespace-pre-line">{{ $post->body }}</div>

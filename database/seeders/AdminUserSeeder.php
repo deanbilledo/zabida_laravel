@@ -18,7 +18,7 @@ class AdminUserSeeder extends Seeder
             [
                 'name' => 'ZABIDA Admin',
                 'password' => Hash::make('ChangeThisPasswordBeforeSeeding!23'),
-                'role' => 'admin',
+                'role' => User::ROLE_SUPER_ADMIN,
                 'email_verified_at' => now(),
             ]
         );

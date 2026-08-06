@@ -9,6 +9,10 @@
       <a href="{{ route('admin.posts.index') }}" class="{{ request()->routeIs('admin.posts.*') ? 'text-clay' : 'text-ink/70 hover:text-clay' }} transition-colors">Journal Posts</a>
       <a href="{{ route('admin.publications.index') }}" class="{{ request()->routeIs('admin.publications.*') ? 'text-clay' : 'text-ink/70 hover:text-clay' }} transition-colors">PeaceWorks Archive</a>
       <a href="{{ route('admin.facebook.index') }}" class="{{ request()->routeIs('admin.facebook.*') ? 'text-clay' : 'text-ink/70 hover:text-clay' }} transition-colors">Facebook Sync</a>
+      <a href="{{ route('admin.facebook.index') }}" class="{{ request()->routeIs('admin.facebook.*') ? 'text-clay' : 'text-ink/70 hover:text-clay' }} transition-colors">Facebook Sync</a>
+      @if (auth()->user()->isSuperAdmin())
+        <a href="{{ route('admin.admins.index') }}" class="{{ request()->routeIs('admin.admins.*') ? 'text-clay' : 'text-ink/70 hover:text-clay' }} transition-colors">Admins</a>
+      @endif
     </nav>
 
     <form method="POST" action="{{ route('admin.logout') }}" data-loading-label="Signing out&hellip;">

@@ -40,6 +40,7 @@
                 {{-- Visible only to logged-in users --}}
                 <li><a href="{{ route('admin.dashboard') }}" class="hover:text-gold">Admin Dashboard</a></li>
             @endauth
+
         </ul>
       </div>
       <div>

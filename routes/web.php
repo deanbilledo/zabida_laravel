@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ActivitiesController;
+use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FacebookSyncController;
 use App\Http\Controllers\Admin\PostController as AdminPostController;
@@ -75,5 +76,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         Route::get('facebook-sync', [FacebookSyncController::class, 'index'])->name('facebook.index');
         Route::post('facebook-sync', [FacebookSyncController::class, 'sync'])->name('facebook.sync');
+
+        Route::middleware(['super_admin'])->group(function () {
+            Route::get('admins', [AdminUserController::class, 'index'])->name('admins.index');
+            Route::get('admins/create', [AdminUserController::class, 'create'])->name('admins.create');
+            Route::post('admins', [AdminUserController::class, 'store'])->name('admins.store');
+            Route::post('admins/{admin}/promote', [AdminUserController::class, 'promote'])->name('admins.promote');
+            Route::delete('admins/{admin}', [AdminUserController::class, 'destroy'])->name('admins.destroy');
+        });
     });
 });

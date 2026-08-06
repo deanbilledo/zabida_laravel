@@ -78,7 +78,7 @@
 <!-- Document Upload -->
 <div class="mb-6">
     <label for="file" class="block text-sm font-medium text-gray-700 mb-2">
-        Document File (PDF only, max 20MB) @if(!isset($publication))<span class="text-red-500">*</span>@endif
+        Document File (PDF only, max 128MB) @if(!isset($publication))<span class="text-red-500">*</span>@endif
     </label>
     <input 
         type="file" 

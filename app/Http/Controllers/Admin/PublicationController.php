@@ -106,7 +106,7 @@ class PublicationController extends Controller
             'description' => ['nullable', 'string', 'max:2000'],
             'category' => ['required', 'string', 'in:'.implode(',', Publication::CATEGORIES)],
             'published_at' => ['required', 'date'],
-            'file' => [$requireFile ? 'required' : 'nullable', 'file', 'mimes:pdf', 'max:20480'],
+            'file' => [$requireFile ? 'required' : 'nullable', 'file', 'mimes:pdf', 'max:128000'],
             'cover_image' => ['nullable', 'image', 'max:4096'],
             'auto_cover_image' => ['nullable', 'string'],
         ], [
@@ -114,7 +114,7 @@ class PublicationController extends Controller
             'category.in' => 'Please choose a valid category.',
             'file.required' => 'Please choose a PDF file to upload.',
             'file.mimes' => 'Only PDF files can be uploaded here.',
-            'file.max' => 'That PDF is too large — please keep it under 20MB.',
+            'file.max' => 'That PDF is too large — please keep it under 128MB.',
         ]);
     }
 

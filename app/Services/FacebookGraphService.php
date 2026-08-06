@@ -46,7 +46,7 @@ class FacebookGraphService
             'created_time',
             'permalink_url',
             'full_picture',
-            'attachments{media_type,media,url,title,subattachments{media_type,media,url}}',
+            'attachments{type,media_type,media{image{src},source},target,subattachments{type,media_type,media{image{src},source},target}}',
         ]);
 
         $response = Http::get("{$this->baseUrl}/me/posts", [
@@ -74,128 +74,224 @@ class FacebookGraphService
 
     /**
      * Import posts that don't exist locally yet.
-     * Automatically handles bulk initial sync vs daily light sync.
      */
     public function syncNewPosts(?int $limit = null): int
     {
-        // 1. Prevent PHP timeout when downloading multiple images
         set_time_limit(0);
 
-        // 2. Smart Limit Logic: If empty DB, fetch 100 posts. If not empty, check latest 5.
         if ($limit === null) {
             $hasExistingPosts = Post::where('source', 'facebook')->exists();
-            $limit = $hasExistingPosts ? 5 : 100;
+            $limit = $hasExistingPosts ? 5 : 10;
         }
 
         $created = 0;
         $posts = $this->fetchRecentPosts($limit);
 
-        foreach ($posts as $fbPost) {
-            if (empty($fbPost['id'])) {
-                continue;
-            }
-
-            $fbPostId = $fbPost['id'];
-
-            if (Post::where('facebook_post_id', $fbPostId)->exists()) {
-                continue; // already imported
-            }
-
-            $message = trim($fbPost['message'] ?? '');
-            $attachments = $fbPost['attachments']['data'] ?? [];
-
-            if ($message === '' && empty($attachments) && empty($fbPost['full_picture'])) {
-                continue;
-            }
-
-            $title = Str::limit(Str::of($message)->explode("\n")->first() ?: 'Facebook update', 80);
-            $excerpt = Str::limit($message, 240);
-
-            $post = Post::create([
-                'title' => $title ?: 'Facebook update',
-                'excerpt' => $excerpt,
-                'body' => $message,
-                'source' => 'facebook',
-                'facebook_post_id' => $fbPostId,
-                'facebook_permalink' => $fbPost['permalink_url'] ?? null,
-                'published_at' => isset($fbPost['created_time'])
-                    ? date('Y-m-d H:i:s', strtotime($fbPost['created_time']))
-                    : now(),
-            ]);
-
-            if (! empty($attachments)) {
-                $this->importAttachments($post, $attachments);
-            } elseif (! empty($fbPost['full_picture'])) {
-                $this->importSharedPicture($post, $fbPost['full_picture']);
-            }
-
-            $created++;
+         foreach ($posts as $fbPost) {
+        if (empty($fbPost['id'])) {
+            continue;
         }
 
-        return $created;
+        $fbPostId = $fbPost['id'];
+
+        if (Post::where('facebook_post_id', $fbPostId)->exists()) {
+            continue;
+        }
+
+        $message = trim($fbPost['message'] ?? '');
+        $attachments = $fbPost['attachments']['data'] ?? [];
+        $fullPicture = $fbPost['full_picture'] ?? null;
+
+        if ($message === '' && empty($attachments) && empty($fullPicture)) {
+            continue;
+        }
+
+        $title = Str::limit(Str::of($message)->explode("\n")->first() ?: 'Facebook update', 80);
+        $excerpt = Str::limit($message, 240);
+
+        $post = Post::create([
+            'title' => $title ?: 'Facebook update',
+            'excerpt' => $excerpt,
+            'body' => $message,
+            'source' => 'facebook',
+            'facebook_post_id' => $fbPostId,
+            'facebook_permalink' => $fbPost['permalink_url'] ?? null,
+            'published_at' => isset($fbPost['created_time'])
+                ? date('Y-m-d H:i:s', strtotime($fbPost['created_time']))
+                : now(),
+        ]);
+
+        $importedCount = 0;
+        if (! empty($attachments)) {
+            $importedCount = $this->importAttachments($post, $attachments);
+        }
+
+        if ($importedCount === 0 && ! empty($fullPicture)) {
+            $this->importSharedPicture($post, $fullPicture);
+            $importedCount = 1;
+        }
+
+        // NEW: last-resort fallback — query this specific post directly
+        // for full_picture/picture. Covers native_templates / share types
+        // where the batched /me/posts response omits image data entirely.
+        if ($importedCount === 0) {
+            $resolvedUrl = $this->resolvePostPicture($fbPostId);
+            if ($resolvedUrl) {
+                $this->importSharedPicture($post, $resolvedUrl);
+                $importedCount = 1;
+            } else {
+                Log::info('ZABIDA Facebook sync: no image found for post', [
+                    'facebook_post_id' => $fbPostId,
+                ]);
+            }
+        }
+
+        $created++;
     }
 
+    return $created;
+    }
+
+protected function resolvePostPicture(string $postId): ?string
+{
+    try {
+        $response = Http::get("{$this->baseUrl}/{$postId}", [
+            'fields' => 'full_picture,picture',
+            'access_token' => $this->userToken,
+        ]);
+
+        if ($response->failed()) {
+            Log::warning('ZABIDA Facebook sync: direct post picture lookup failed', [
+                'post_id' => $postId,
+                'status' => $response->status(),
+            ]);
+            return null;
+        }
+
+        return $response->json('full_picture') ?? $response->json('picture');
+    } catch (\Throwable $e) {
+        Log::warning('ZABIDA Facebook sync: direct post picture lookup exception', [
+            'post_id' => $postId,
+            'error' => $e->getMessage(),
+        ]);
+        return null;
+    }
+}
+
     /**
-     * Parse attachments and subattachments (albums, single photos, videos).
+     * Parse attachments and subattachments. Returns count of imported images.
      */
-    protected function importAttachments(Post $post, array $attachments): void
+    protected function importAttachments(Post $post, array $attachments): int
     {
         $position = 0;
         $coverSet = false;
 
         foreach ($attachments as $attachment) {
-            // Multi-photo album (subattachments)
-            if (! empty($attachment['subattachments']['data'])) {
-                foreach ($attachment['subattachments']['data'] as $sub) {
-                    $position = $this->importOnePhoto($post, $sub, $position, $coverSet);
-                    $coverSet = true;
-                }
-                continue;
+            // Check main attachment
+            $newPosition = $this->importOnePhoto($post, $attachment, $position, $coverSet);
+            if ($newPosition > $position) {
+                $position = $newPosition;
+                $coverSet = true;
             }
 
-            $mediaType = $attachment['media_type'] ?? null;
-
-            if ($mediaType === 'photo' || isset($attachment['media']['image'])) {
-                $position = $this->importOnePhoto($post, $attachment, $position, $coverSet);
-                $coverSet = true;
-            } elseif (in_array($mediaType, ['video_inline', 'video_autoplay', 'video_share'], true)) {
+            // Check videos
+            $mediaType = $attachment['media_type'] ?? $attachment['type'] ?? null;
+            if (in_array($mediaType, ['video_inline', 'video_autoplay', 'video_share'], true)) {
                 $source = $attachment['media']['source'] ?? null;
                 if ($source) {
                     $post->video_url = $source;
                     $post->save();
                 }
             }
+
+            // Check subattachments (gallery images in a shared post)
+            if (! empty($attachment['subattachments']['data'])) {
+                foreach ($attachment['subattachments']['data'] as $sub) {
+                    $newPosition = $this->importOnePhoto($post, $sub, $position, $coverSet);
+                    if ($newPosition > $position) {
+                        $position = $newPosition;
+                        $coverSet = true;
+                    }
+                }
+            }
         }
+
+        return $position;
     }
 
-    protected function importOnePhoto(Post $post, array $attachment, int $position, bool $coverAlreadySet): int
-    {
-        $imageUrl = $attachment['media']['image']['src'] ?? $attachment['url'] ?? null;
-        if (! $imageUrl) {
-            return $position;
-        }
+protected function importOnePhoto(Post $post, array $attachment, int $position, bool $coverAlreadySet): int
+{
+    $imageUrl = $attachment['media']['image']['src']
+        ?? $attachment['media']['src']
+        ?? null;
 
-        $localPath = $this->downloadImage($imageUrl, $post->id, $position);
-        if (! $localPath) {
-            return $position;
-        }
+    // NEW: handle shared/repost attachments (native_templates, share, etc.)
+    // These don't carry image data directly — only a target id pointing
+    // to the original post/page/photo, which we have to resolve separately.
+    if (! $imageUrl && ! empty($attachment['target']['id'])) {
+        $imageUrl = $this->resolveSharedImage($attachment['target']['id']);
+    }
 
-        PostImage::create([
-            'post_id' => $post->id,
-            'path' => $localPath,
-            'facebook_media_id' => $attachment['target']['id'] ?? null,
-            'position' => $position,
+    if (! $imageUrl) {
+        return $position;
+    }
+
+    $mediaId = $attachment['target']['id'] ?? null;
+    if ($mediaId && PostImage::where('post_id', $post->id)->where('facebook_media_id', $mediaId)->exists()) {
+        return $position;
+    }
+
+    $localPath = $this->downloadImage($imageUrl, $post->id, $position);
+    if (! $localPath) {
+        return $position;
+    }
+
+    PostImage::create([
+        'post_id' => $post->id,
+        'path' => $localPath,
+        'facebook_media_id' => $mediaId,
+        'position' => $position,
+    ]);
+
+    if (! $coverAlreadySet) {
+        $post::where('id', $post->id)->update(['image' => $localPath]);
+    }
+
+    return $position + 1;
+}
+
+/**
+ * For shared posts, the attachment only gives us a target id (the original
+ * post/page/photo being shared). Query that object directly for its picture.
+ */
+protected function resolveSharedImage(string $targetId): ?string
+{
+    try {
+        $response = Http::get("{$this->baseUrl}/{$targetId}", [
+            'fields' => 'full_picture',
+            'access_token' => $this->userToken,
         ]);
 
-        if (! $coverAlreadySet) {
-            $post::where('id', $post->id)->update(['image' => $localPath]);
+        if ($response->failed()) {
+            Log::warning('ZABIDA Facebook sync: failed to resolve shared image', [
+                'target_id' => $targetId,
+                'status' => $response->status(),
+            ]);
+            return null;
         }
 
-        return $position + 1;
+        return $response->json('full_picture');
+    } catch (\Throwable $e) {
+        Log::warning('ZABIDA Facebook sync: shared image lookup exception', [
+            'target_id' => $targetId,
+            'error' => $e->getMessage(),
+        ]);
+        return null;
     }
+}
 
     /**
-     * Fallback for shared posts or links that have a preview image but no standard attachments.
+     * Fallback for shared posts or links that have a preview image.
      */
     protected function importSharedPicture(Post $post, string $imageUrl): void
     {
@@ -203,6 +299,12 @@ class FacebookGraphService
 
         if ($localPath) {
             $post::where('id', $post->id)->update(['image' => $localPath]);
+
+            PostImage::create([
+                'post_id' => $post->id,
+                'path' => $localPath,
+                'position' => 0,
+            ]);
         }
     }
 

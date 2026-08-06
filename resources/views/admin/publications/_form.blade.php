@@ -120,3 +120,63 @@
         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
     @enderror
 </div>
+<!-- Hidden field carrying the auto-generated thumbnail (page 1 of the PDF) -->
+<input type="hidden" name="auto_cover_image" id="auto_cover_image">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(function () {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const fileInput = document.getElementById('file');
+    const coverInput = document.getElementById('cover_image');
+    const hiddenOutput = document.getElementById('auto_cover_image');
+
+    if (!fileInput) return;
+
+    fileInput.addEventListener('change', async function (e) {
+        // Don't bother generating if the admin already picked a manual cover image
+        if (coverInput && coverInput.files && coverInput.files.length > 0) {
+            return;
+        }
+
+        const file = e.target.files[0];
+        if (!file || file.type !== 'application/pdf') {
+            hiddenOutput.value = '';
+            return;
+        }
+
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const page = await pdf.getPage(1);
+
+            const scale = 1.5;
+            const viewport = page.getViewport({ scale });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext('2d');
+
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+            hiddenOutput.value = canvas.toDataURL('image/png');
+        } catch (err) {
+            console.error('Thumbnail generation failed, continuing without one:', err);
+            hiddenOutput.value = '';
+        }
+    });
+
+    // If the admin picks a manual cover image AFTER a PDF was already
+    // processed, clear the auto-generated one so the manual choice wins.
+    if (coverInput) {
+        coverInput.addEventListener('change', function () {
+            if (coverInput.files && coverInput.files.length > 0) {
+                hiddenOutput.value = '';
+            }
+        });
+    }
+})();
+</script>

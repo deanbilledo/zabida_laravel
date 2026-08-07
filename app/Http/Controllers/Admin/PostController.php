@@ -64,11 +64,13 @@ class PostController extends Controller
         Storage::disk('public')->delete($media->path);
         $media->delete();
 
-        // If the deleted item was the cover, promote the next image (not
-        // video) to cover, or clear it if none remain.
         if ($post->image === $media->path) {
             $next = $post->images()->where('type', 'image')->first();
             $post->update(['image' => $next?->path]);
+        }
+
+        if (request()->wantsJson() || request()->ajax()) {
+            return response()->json(['status' => 'success', 'message' => 'Media removed.']);
         }
 
         return back()

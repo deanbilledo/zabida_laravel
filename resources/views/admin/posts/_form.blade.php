@@ -43,10 +43,10 @@
               <span class="absolute bottom-1 left-1 bg-gold text-ink text-[10px] px-1.5 py-0.5 rounded font-mono uppercase">Cover</span>
             @endif
           @endif
-          
-          {{-- The form tag is gone. We use form="delete-media-ID" to link it to the hidden forms outside --}}
-          <button type="submit" form="delete-media-{{ $loop->index }}" aria-label="Remove this file"
-            class="absolute -top-2 -right-2 w-6 h-6 flex items-center justify-center rounded-full bg-ink text-paper text-xs hover:bg-clay transition-colors">&times;</button>
+
+          <button type="button" class="js-remove-media absolute -top-2 -right-2 w-6 h-6 flex items-center justify-center rounded-full bg-ink text-paper text-xs hover:bg-clay transition-colors"
+            aria-label="Remove this file"
+            data-url="{{ route('admin.posts.media.destroy', [$post, $media]) }}">&times;</button>
         </div>
       @endforeach
     </div>

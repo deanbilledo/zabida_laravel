@@ -28,12 +28,8 @@
 {{-- We render the delete forms OUTSIDE the main form to prevent HTML nesting errors --}}
 @if (isset($post) && $post->images->isNotEmpty())
   @foreach ($post->images as $media)
-    <form id="delete-media-{{ $loop->index }}" method="POST" action="{{ route('admin.posts.media.destroy', [$post, $media]) }}"
-      class="hidden"
-      data-confirm="Remove this file from the post?"
-      data-confirm-danger="true">
-      @csrf
-      @method('DELETE')
+    <form id="delete-media-{{ $loop->index }}" ...>
+      ...
     </form>
   @endforeach
 @endif
@@ -54,5 +50,66 @@
         }
     }
 </script>
+<script>
+    function showLoadingAnimation(form) {
+        if (form.checkValidity()) {
+            const btn = document.getElementById('upload-btn');
+            const text = document.getElementById('upload-text');
+            const spinner = document.getElementById('upload-spinner');
 
+            if (btn && text && spinner) {
+                btn.classList.add('opacity-75', 'cursor-wait');
+                text.innerText = 'Saving...';
+                spinner.style.display = 'inline-block';
+                spinner.classList.remove('hidden');
+            }
+        }
+    }
+
+    // Media removal uses ZUI's confirm modal directly, then fetch() —
+    // deliberately NOT a form submit, so it never touches the global
+    // data-confirm/data-async-upload form listeners in ui.js. That keeps
+    // it from reloading the page, which is what was wiping out any
+    // unsaved title/body edits.
+    document.querySelectorAll('.js-remove-media').forEach(function (button) {
+        button.addEventListener('click', async function () {
+            var ok = await window.ZUI.confirm('Remove this file from the post?', { danger: true });
+            if (!ok) return;
+
+            var thumbnail = button.closest('.relative.group');
+            var url = button.dataset.url;
+            var token = document.querySelector('meta[name="csrf-token"]')
+                ? document.querySelector('meta[name="csrf-token"]').content
+                : document.querySelector('input[name="_token"]').value;
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': token,
+                        'X-HTTP-Method-Override': 'DELETE',
+                        'Accept': 'application/json',
+                    },
+                    body: (function () {
+                        var fd = new FormData();
+                        fd.append('_method', 'DELETE');
+                        fd.append('_token', token);
+                        return fd;
+                    })(),
+                });
+
+                if (!response.ok) {
+                    window.ZUI.showLoadingError
+                        ? alert('Could not remove that file — please try again.')
+                        : alert('Could not remove that file — please try again.');
+                    return;
+                }
+
+                if (thumbnail) thumbnail.remove();
+            } catch (err) {
+                alert('Could not remove that file — please check your connection and try again.');
+            }
+        });
+    });
+</script>
 @endsection

@@ -46,7 +46,7 @@ class FacebookGraphService
             'created_time',
             'permalink_url',
             'full_picture',
-            'attachments{type,media_type,media{image{src},source},target,subattachments{type,media_type,media{image{src},source},target}}',
+            'attachments{type,media_type,media{image{src},source},target,subattachments.limit(50){type,media_type,media{image{src},source},target}}',
         ]);
 
         $response = Http::timeout(30)->retry(2, 500)->get("{$this->baseUrl}/me/posts", [

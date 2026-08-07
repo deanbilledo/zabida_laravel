@@ -45,16 +45,24 @@ class FacebookSyncController extends Controller
                     ? "Sync complete — imported {$created} new post(s), including any photo albums and video."
                     : 'Sync complete — no new posts to import.');
         } catch (\Throwable $e) {
+            $message = $e->getMessage();
+
+            // Facebook's expired/invalid token errors are distinctive enough to
+            // detect and turn into an actionable message instead of raw JSON.
+            if (str_contains($message, 'Session has expired') || str_contains($message, 'Error validating access token')) {
+                $message = 'Your Facebook access token has expired. Go to the settings below and paste in a fresh token to fix this.';
+            }
+
             FacebookSyncLog::create([
                 'status' => 'error',
                 'posts_created' => 0,
-                'message' => $e->getMessage(),
+                'message' => $message,
                 'ran_at' => now(),
             ]);
 
             return back()
                 ->with('status', 'error')
-                ->with('message', 'Sync failed: '.$e->getMessage());
+                ->with('message', 'Sync failed: '.$message);
         }
     }
 }

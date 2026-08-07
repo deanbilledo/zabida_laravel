@@ -78,11 +78,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('facebook-sync', [FacebookSyncController::class, 'sync'])->name('facebook.sync');
 
         Route::middleware(['super_admin'])->group(function () {
-            Route::get('admins', [AdminUserController::class, 'index'])->name('admins.index');
-            Route::get('admins/create', [AdminUserController::class, 'create'])->name('admins.create');
-            Route::post('admins', [AdminUserController::class, 'store'])->name('admins.store');
-            Route::post('admins/{admin}/promote', [AdminUserController::class, 'promote'])->name('admins.promote');
-            Route::delete('admins/{admin}', [AdminUserController::class, 'destroy'])->name('admins.destroy');
+        Route::get('admins', [AdminUserController::class, 'index'])->name('admins.index');
+        Route::get('admins/create', [AdminUserController::class, 'create'])->name('admins.create');
+        Route::post('admins', [AdminUserController::class, 'store'])->name('admins.store');
+        Route::post('admins/{admin}/promote', [AdminUserController::class, 'promote'])->name('admins.promote');
+        Route::delete('admins/{admin}', [AdminUserController::class, 'destroy'])->name('admins.destroy');
+
+        Route::post('facebook-sync/settings', [FacebookSyncController::class, 'updateSettings'])
+            ->name('facebook.settings.update');
         });
     });
 });

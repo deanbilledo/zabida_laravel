@@ -50,7 +50,7 @@
           <li><a href="tel:0629902410" class="hover:text-gold">0629902410</a></li>
           <li><a href="mailto:zabidamail.ph@gmail.com" class="hover:text-gold">zabidamail.ph@gmail.com</a></li>
           <li><a href="https://www.facebook.com/zabidadotorg/" target="_blank" rel="noopener noreferrer" class="hover:text-gold">facebook.com/zabida.org</a></li>
-          <li><a href="https://www.youtube.com/zabidaorg" target="_blank" rel="noopener noreferrer" class="hover:text-gold">youtube.com/zabidaorg</a></li>
+          <li><a href="https://www.youtube.com/zabidaorg" target="_blank" rel="noopener noreferrer" class="hover:text-gold">youtube.com/@zabidaorg4684</a></li>
         </ul>
       </div>
     </div>
